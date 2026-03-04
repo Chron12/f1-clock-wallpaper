@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="fps_entries">
+        <item>15 FPS (Battery Saver)</item>
+        <item>30 FPS (Balanced)</item>
+        <item>60 FPS (Smooth)</item>
+    </string-array>
+    <string-array name="fps_values">
+        <item>15</item>
+        <item>30</item>
+        <item>60</item>
+    </string-array>
+
+    <string-array name="size_entries">
+        <item>Small</item>
+        <item>Medium</item>
+        <item>Large</item>
+    </string-array>
+    <string-array name="size_values">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
+
+    <string-array name="refresh_entries">
+        <item>Every Hour</item>
+        <item>Every 30 Minutes</item>
+        <item>Every 15 Minutes</item>
+    </string-array>
+    <string-array name="refresh_values">
+        <item>3600</item>
+        <item>1800</item>
+        <item>900</item>
+    </string-array>
+
+    <string-array name="opacity_entries">
+        <item>Very Dark</item>
+        <item>Dark</item>
+        <item>Medium</item>
+        <item>Light</item>
+    </string-array>
+    <string-array name="opacity_values">
+        <item>250</item>
+        <item>240</item>
+        <item>220</item>
+        <item>200</item>
+    </string-array>
+</resources>

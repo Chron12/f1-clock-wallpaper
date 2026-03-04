@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory android:title="Display">
+
+        <ListPreference
+            android:key="fps_target"
+            android:title="Frame Rate"
+            android:summary="Target frames per second"
+            android:entries="@array/fps_entries"
+            android:entryValues="@array/fps_values"
+            android:defaultValue="30" />
+
+        <SwitchPreference
+            android:key="show_driver_labels"
+            android:title="Driver Labels"
+            android:summary="Show driver code labels on track"
+            android:defaultValue="true" />
+
+        <SwitchPreference
+            android:key="show_leaderboard"
+            android:title="Leaderboard Overlay"
+            android:summary="Show position leaderboard on screen"
+            android:defaultValue="true" />
+
+        <SwitchPreference
+            android:key="show_race_info"
+            android:title="Race Info"
+            android:summary="Show race title, lap counter, and clock"
+            android:defaultValue="true" />
+
+        <SwitchPreference
+            android:key="show_tire_colors"
+            android:title="Tire Compound Colors"
+            android:summary="Tint car dots by current tire compound"
+            android:defaultValue="false" />
+
+        <ListPreference
+            android:key="car_size"
+            android:title="Car Dot Size"
+            android:summary="Size of car indicators on track"
+            android:entries="@array/size_entries"
+            android:entryValues="@array/size_values"
+            android:defaultValue="medium" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="Performance">
+
+        <SwitchPreference
+            android:key="reduce_when_invisible"
+            android:title="Save Battery When Hidden"
+            android:summary="Stop rendering when wallpaper is not visible"
+            android:defaultValue="true" />
+
+        <ListPreference
+            android:key="data_refresh_interval"
+            android:title="Data Refresh"
+            android:summary="How often to fetch new race data"
+            android:entries="@array/refresh_entries"
+            android:entryValues="@array/refresh_values"
+            android:defaultValue="3600" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="Visual">
+
+        <SwitchPreference
+            android:key="glow_effects"
+            android:title="Glow Effects"
+            android:summary="Glow around top 3 drivers"
+            android:defaultValue="true" />
+
+        <SwitchPreference
+            android:key="sector_colors"
+            android:title="Sector Colors"
+            android:summary="Color-code track sectors"
+            android:defaultValue="true" />
+
+        <ListPreference
+            android:key="background_opacity"
+            android:title="Background Darkness"
+            android:summary="How dark the wallpaper background is"
+            android:entries="@array/opacity_entries"
+            android:entryValues="@array/opacity_values"
+            android:defaultValue="240" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

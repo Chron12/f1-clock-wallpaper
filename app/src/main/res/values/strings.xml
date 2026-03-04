@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">F1 Clock</string>
+    <string name="wallpaper_label">F1 Clock Live Wallpaper</string>
+    <string name="wallpaper_description">Live F1 race replays on your home screen. Real telemetry data, new race every hour.</string>
+    <string name="settings_title">F1 Clock Settings</string>
+</resources>
