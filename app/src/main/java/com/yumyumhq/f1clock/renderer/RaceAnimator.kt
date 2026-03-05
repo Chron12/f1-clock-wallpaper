@@ -4,11 +4,13 @@ package com.yumyumhq.f1clock.renderer
  * Manages race time synchronization.
  * Uses the same time formula as the web version:
  *   raceTime = (System.currentTimeMillis() % 3600000) / 1000
- * 
+ *
  * This means every hour starts a new "race replay" from t=0,
  * perfectly in sync with the web version.
  */
 class RaceAnimator {
+
+    private var lastRaceTime = -1f
 
     /**
      * Get the current race time in seconds.
@@ -17,6 +19,27 @@ class RaceAnimator {
      */
     fun getRaceTimeSeconds(): Float {
         return (System.currentTimeMillis() % 3600000L) / 1000f
+    }
+
+    /**
+     * Returns the elapsed seconds since the last call to this method.
+     * Capped at 0.1s to prevent large jumps after the wallpaper was hidden.
+     * Returns 0 on the first call.
+     */
+    fun getDeltaTimeSeconds(): Float {
+        val current = getRaceTimeSeconds()
+        val delta = if (lastRaceTime < 0f) 0f else current - lastRaceTime
+        lastRaceTime = current
+        return delta.coerceIn(0f, 0.1f)
+    }
+
+    /**
+     * Returns normalized race progress in [0.0, 1.0] for the full hour cycle.
+     *
+     * @param raceDurationS Total race duration in seconds (e.g. 3600f for full hour)
+     */
+    fun getRaceProgress(raceDurationS: Float): Float {
+        return (getRaceTimeSeconds() / raceDurationS).coerceIn(0f, 1f)
     }
 
     /**

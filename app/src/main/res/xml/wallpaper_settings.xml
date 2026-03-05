@@ -9,7 +9,7 @@
             android:summary="Target frames per second"
             android:entries="@array/fps_entries"
             android:entryValues="@array/fps_values"
-            android:defaultValue="30" />
+            android:defaultValue="60" />
 
         <SwitchPreference
             android:key="show_driver_labels"
@@ -83,7 +83,7 @@
             android:summary="How dark the wallpaper background is"
             android:entries="@array/opacity_entries"
             android:entryValues="@array/opacity_values"
-            android:defaultValue="240" />
+            android:defaultValue="0" />
 
     </PreferenceCategory>
 
