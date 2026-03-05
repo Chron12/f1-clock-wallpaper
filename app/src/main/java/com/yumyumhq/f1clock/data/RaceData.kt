@@ -97,3 +97,35 @@ data class FastestLap(
     val lap: Int,
     val t: Float
 )
+
+// OpenF1 API response models
+data class OpenF1Session(
+    val session_key: Int,
+    val session_name: String,
+    val session_type: String,
+    val date_start: String,
+    val circuit_short_name: String,
+    val country_name: String
+)
+
+data class OpenF1Driver(
+    val driver_number: Int,
+    val broadcast_name: String,
+    val name_acronym: String,
+    val team_name: String,
+    val team_colour: String?
+)
+
+data class OpenF1Position(
+    val driver_number: Int,
+    val position: Int,
+    val date: String
+)
+
+data class OpenF1Location(
+    val driver_number: Int,
+    val x: Int,
+    val y: Int,
+    val z: Int,
+    val date: String
+)

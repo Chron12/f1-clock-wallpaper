@@ -20,7 +20,8 @@ class WallpaperSettingsActivity : AppCompatActivity() {
                 .commit()
         }
 
-        actionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.title = "F1 Clock Settings"
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {

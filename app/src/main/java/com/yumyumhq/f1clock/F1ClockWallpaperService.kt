@@ -17,6 +17,8 @@ import android.view.SurfaceHolder
 import androidx.preference.PreferenceManager
 import com.yumyumhq.f1clock.data.RaceData
 import com.yumyumhq.f1clock.data.LocalRaceRepository
+import com.yumyumhq.f1clock.data.LiveRaceRepository
+import com.yumyumhq.f1clock.data.RaceMode
 import com.yumyumhq.f1clock.renderer.RaceAnimator
 import com.yumyumhq.f1clock.renderer.TrackRenderer
 import kotlinx.coroutines.*
@@ -29,7 +31,7 @@ import kotlinx.coroutines.*
  * with cars moving around the track using real telemetry data.
  *
  * Performance features:
- * - Hardware-accelerated canvas (API 26+) via lockHardwareCanvas
+ * - Software canvas via lockCanvas (hardware canvas causes flicker + breaks BlurMaskFilter)
  * - Adaptive FPS: full rate during active race, 10fps at start/end
  * - Battery-aware: caps at 20fps when battery < 20% and not charging
  * - Precise frame timing with SystemClock.uptimeMillis instead of postDelayed
@@ -47,6 +49,7 @@ class F1ClockWallpaperService : WallpaperService() {
 
         private val handler = Handler(Looper.getMainLooper())
         private val repository = LocalRaceRepository(applicationContext)
+        private val liveRepository = LiveRaceRepository(applicationContext)
         private val renderer = TrackRenderer()
         private val animator = RaceAnimator()
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -61,6 +64,9 @@ class F1ClockWallpaperService : WallpaperService() {
         private var reduceWhenInvisible = true
         private var dataRefreshIntervalMs = 3600000L
         private var lastDataFetchTime = 0L
+        private var raceMode = RaceMode.HISTORICAL
+        private var spoilerFree = false
+        private var spoilerDelayHours = 2
 
         // Adaptive FPS
         private var currentFps = 60
@@ -181,6 +187,14 @@ class F1ClockWallpaperService : WallpaperService() {
             reduceWhenInvisible = prefs.getBoolean("reduce_when_invisible", true)
             dataRefreshIntervalMs = (prefs.getString("data_refresh_interval", "3600")?.toLongOrNull() ?: 3600L) * 1000L
 
+            raceMode = when (prefs.getString("race_mode", "historical")) {
+                "live" -> RaceMode.LIVE
+                "auto" -> RaceMode.AUTO
+                else -> RaceMode.HISTORICAL
+            }
+            spoilerFree = prefs.getBoolean("spoiler_free", false)
+            spoilerDelayHours = prefs.getString("spoiler_delay_hours", "2")?.toIntOrNull() ?: 2
+
             val carSize = prefs.getString("car_size", "medium") ?: "medium"
             renderer.carSizeMultiplier = when (carSize) {
                 "small" -> 0.7f
@@ -227,12 +241,24 @@ class F1ClockWallpaperService : WallpaperService() {
         private fun fetchRaceData() {
             scope.launch {
                 try {
-                    val data = repository.getRaceData(forceRefresh = true)
+                    val data = when (raceMode) {
+                        RaceMode.LIVE -> {
+                            liveRepository.getLiveRaceData() ?: repository.getRaceData(forceRefresh = true)
+                        }
+                        RaceMode.AUTO -> {
+                            if (liveRepository.isLiveRaceActive()) {
+                                liveRepository.getLiveRaceData() ?: repository.getRaceData(forceRefresh = true)
+                            } else {
+                                repository.getRaceData(forceRefresh = true)
+                            }
+                        }
+                        RaceMode.HISTORICAL -> repository.getRaceData(forceRefresh = true)
+                    }
                     if (data != null) {
                         raceData = data
                         renderer.computeTransform(surfaceWidth, surfaceHeight, data.trackOutline)
                         lastDataFetchTime = System.currentTimeMillis()
-                        Log.i(TAG, "Race loaded: ${data.title}")
+                        Log.i(TAG, "Race loaded [${raceMode}]: ${data.title}")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error fetching race data", e)
@@ -259,16 +285,9 @@ class F1ClockWallpaperService : WallpaperService() {
 
             var canvas: Canvas? = null
             try {
-                // Use hardware-accelerated canvas on API 26+ for GPU compositing
-                canvas = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    try {
-                        holder.lockHardwareCanvas()
-                    } catch (e: Exception) {
-                        holder.lockCanvas()
-                    }
-                } else {
-                    holder.lockCanvas()
-                }
+                // Always use software canvas — lockHardwareCanvas() causes double-buffer
+                // flickering on WallpaperService surfaces and also breaks BlurMaskFilter.
+                canvas = holder.lockCanvas()
 
                 if (canvas != null && data != null) {
                     val raceTime = animator.getRaceTimeSeconds()
@@ -278,8 +297,9 @@ class F1ClockWallpaperService : WallpaperService() {
                         fetchRaceData()
                     }
 
-                    // Check periodic refresh
-                    if (System.currentTimeMillis() - lastDataFetchTime > dataRefreshIntervalMs) {
+                    // Check periodic refresh — live/auto modes poll every 30s, historical every hour
+                    val refreshInterval = if (raceMode != RaceMode.HISTORICAL) 30_000L else dataRefreshIntervalMs
+                    if (System.currentTimeMillis() - lastDataFetchTime > refreshInterval) {
                         fetchRaceData()
                     }
 

@@ -27,6 +27,7 @@ class TrackRenderer {
     private val shadowPaint     = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); color = Color.BLACK }
     private val bgPaint         = Paint().apply { style = Paint.Style.FILL }
     private val startLinePaint  = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.WHITE }
+    private val accentLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.parseColor("#E8002D") }
     private val glowPaint       = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; maskFilter = BlurMaskFilter(16f, BlurMaskFilter.Blur.NORMAL) }
     private val accentPaint     = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pillPaint       = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.argb(180, 0, 0, 0) }
@@ -143,11 +144,17 @@ class TrackRenderer {
 
     fun render(canvas: Canvas, raceData: RaceData, raceTimeSeconds: Float) {
         val width = canvas.width; val height = canvas.height
-        val uiScale = min(width, height) / 700f; val t = raceTimeSeconds
+        val uiScale = (min(width, height) / 700f).coerceAtMost(1.8f); val t = raceTimeSeconds
         val accentColor = circuitAccentColor(raceData.title)
 
-        bgPaint.color = Color.argb(backgroundOpacity, 8, 8, 12)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+        if (backgroundOpacity > 0) {
+            // Two-band gradient: top 30% slightly darker for depth
+            val topH = height * 0.30f
+            bgPaint.color = Color.argb(backgroundOpacity, 5, 5, 10)
+            canvas.drawRect(0f, 0f, width.toFloat(), topH, bgPaint)
+            bgPaint.color = Color.argb((backgroundOpacity * 0.7f).toInt(), 8, 8, 12)
+            canvas.drawRect(0f, topH, width.toFloat(), height.toFloat(), bgPaint)
+        }
 
         drawTrack(canvas, raceData, uiScale, accentColor)
         drawStartFinishLine(canvas, raceData.trackOutline, uiScale)
@@ -205,8 +212,14 @@ class TrackRenderer {
         val dx = toScreenX(outline[1].x) - sx0; val dy = toScreenY(outline[1].y) - sy0
         val len = sqrt(dx * dx + dy * dy).coerceAtLeast(0.001f)
         val px = -dy / len * 14f * uiScale; val py = dx / len * 14f * uiScale
-        startLinePaint.strokeWidth = 3f * uiScale
+        startLinePaint.strokeWidth = 4f * uiScale
         canvas.drawLine(sx0 - px, sy0 - py, sx0 + px, sy0 + py, startLinePaint)
+        // Second parallel line in F1 red for a checkered-flag look
+        val offsetDx = (dx / len) * 2f * uiScale
+        val offsetDy = (dy / len) * 2f * uiScale
+        accentLinePaint.strokeWidth = 2f * uiScale
+        canvas.drawLine(sx0 - px + offsetDx, sy0 - py + offsetDy,
+                        sx0 + px + offsetDx, sy0 + py + offsetDy, accentLinePaint)
     }
 
     private fun drawCar(canvas: Canvas, ds: DriverState, t: Float, raceData: RaceData,
@@ -221,6 +234,7 @@ class TrackRenderer {
         val alphas  = intArrayOf(50, 80, 110, 140)
         val radMul  = floatArrayOf(0.45f, 0.55f, 0.65f, 0.8f)
         for (i in offsets.indices) {
+            if (t - offsets[i] <= 0f) continue  // avoid negative time at race start
             val tp = getDriverPos(ds.locations, t - offsets[i]) ?: continue
             trailPaint.color = Color.argb(alphas[i], cr, cg, cb)
             canvas.drawCircle(toScreenX(tp.x), toScreenY(tp.y), r * radMul[i], trailPaint)
@@ -232,18 +246,19 @@ class TrackRenderer {
                 ds.driverNum == flDriverNum && flFlash -> {
                     val pulse = 0.5f + 0.5f * sin(t * 10.0).toFloat()
                     glowPaint.color = Color.argb(((0.5f + 0.4f * pulse) * 255).toInt(), 180, 77, 255)
-                    canvas.drawCircle(sx, sy, r + 10f, glowPaint)
+                    canvas.drawCircle(sx, sy, r + 7f, glowPaint)
                 }
-                ds.racePosition == 1 -> { glowPaint.color = Color.argb(120, 255, 215, 0); canvas.drawCircle(sx, sy, r + 8f, glowPaint) }
-                ds.racePosition <= 3 -> { glowPaint.color = Color.argb(90, cr, cg, cb); canvas.drawCircle(sx, sy, r + 6f, glowPaint) }
+                ds.racePosition == 1 -> { glowPaint.color = Color.argb(70, 255, 215, 0); canvas.drawCircle(sx, sy, r + 6f, glowPaint) }
+                ds.racePosition <= 3 -> { glowPaint.color = Color.argb(50, cr, cg, cb); canvas.drawCircle(sx, sy, r + 4f, glowPaint) }
             }
         }
 
         carPaint.color = dotColor; canvas.drawCircle(sx, sy, r, carPaint)
         carStrokePaint.strokeWidth = 1.2f * uiScale; canvas.drawCircle(sx, sy, r, carStrokePaint)
 
-        // Always label top 3 with dark pill
-        if (ds.racePosition <= 3) {
+        // Label top 3 always; label others only when in the top half of screen to avoid clutter
+        val inTopHalf = sy < canvas.height / 2f
+        if (ds.racePosition == 1 || ds.racePosition <= 3 || (showDriverLabels && inTopHalf)) {
             val label = ds.driver.code; textPaint.textSize = 8f * uiScale
             val lx = sx + 9f * uiScale; val ly = sy - 5f * uiScale
             val tw = textPaint.measureText(label); val ph = 6f * uiScale; val pw = 3f * uiScale
@@ -270,25 +285,32 @@ class TrackRenderer {
         var y = lbY + lh * 2f; val dotR = 3f * uiScale
         for (ds in active) {
             textPaint.textSize = fs; textPaint.color = Color.parseColor("#999999"); textPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${ds.racePosition}", lbX + 14f * uiScale, y, textPaint)
-            carPaint.color = ds.driver.colorInt(); canvas.drawCircle(lbX + 20f * uiScale, y - fs / 3, dotR, carPaint)
+            canvas.drawText("${ds.racePosition}", lbX + 18f * uiScale, y, textPaint)
+            carPaint.color = ds.driver.colorInt(); canvas.drawCircle(lbX + 24f * uiScale, y - fs / 3, dotR, carPaint)
             textPaint.color = Color.WHITE; textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(ds.driver.code, lbX + 25f * uiScale, y, textPaint)
+            canvas.drawText(ds.driver.code, lbX + 29f * uiScale, y, textPaint)
             if (raceData.fastestLap?.driverNumber?.toString() == ds.driverNum && (raceData.fastestLap?.t ?: 0f) <= t) {
                 textPaint.color = Color.parseColor("#b44dff"); textPaint.textSize = fs * 0.75f
-                canvas.drawText("FL", lbX + 60f * uiScale, y, textPaint); textPaint.textSize = fs
+                canvas.drawText("FL", lbX + 64f * uiScale, y, textPaint); textPaint.textSize = fs
             }
             if (showTireColors && ds.tire != null) {
-                val tc = tireColors[ds.tire]; if (tc != null) { carPaint.color = tc; canvas.drawCircle(lbX + 72f * uiScale, y - fs / 3, 2.5f * uiScale, carPaint) }
+                val tc = tireColors[ds.tire]; if (tc != null) { carPaint.color = tc; canvas.drawCircle(lbX + 74f * uiScale, y - fs / 3, 2.5f * uiScale, carPaint) }
             }
             y += lh
         }
         for (ds in retired) {
             textPaint.textSize = fs * 0.85f; textPaint.color = Color.parseColor("#444444")
-            textPaint.textAlign = Paint.Align.RIGHT; canvas.drawText("-", lbX + 14f * uiScale, y, textPaint)
+            textPaint.textAlign = Paint.Align.RIGHT; canvas.drawText("-", lbX + 18f * uiScale, y, textPaint)
             val dc = ds.driver.colorInt(); carPaint.color = Color.argb(80, Color.red(dc), Color.green(dc), Color.blue(dc))
-            canvas.drawCircle(lbX + 20f * uiScale, y - fs / 3, dotR * 0.8f, carPaint)
-            textPaint.textAlign = Paint.Align.LEFT; canvas.drawText(ds.driver.code, lbX + 25f * uiScale, y, textPaint)
+            canvas.drawCircle(lbX + 24f * uiScale, y - fs / 3, dotR * 0.8f, carPaint)
+            textPaint.textAlign = Paint.Align.LEFT; canvas.drawText(ds.driver.code, lbX + 29f * uiScale, y, textPaint)
+            // DNF tag: small red pill
+            val dnfFs = fs * 0.6f; textPaint.textSize = dnfFs
+            val dnfX = lbX + 52f * uiScale; val dnfW = textPaint.measureText("DNF"); val dnfPad = 2f * uiScale
+            pillRect.set(dnfX - dnfPad, y - dnfFs - dnfPad * 0.5f, dnfX + dnfW + dnfPad, y + dnfPad * 0.5f)
+            accentPaint.color = Color.argb(200, 180, 0, 0); canvas.drawRoundRect(pillRect, 3f * uiScale, 3f * uiScale, accentPaint)
+            textPaint.color = Color.WHITE; canvas.drawText("DNF", dnfX, y, textPaint)
+            textPaint.textSize = fs * 0.85f
             y += lh * 0.9f
         }
     }
@@ -312,10 +334,18 @@ class TrackRenderer {
         canvas.drawRect(pillRect.left + 8f * uiScale, pillRect.bottom - 2.5f * uiScale, pillRect.right - 8f * uiScale, pillRect.bottom, accentPaint)
         centerTextPaint.color = Color.WHITE; drawTextWithShadow(canvas, clockText, cx, clockY, centerTextPaint)
 
-        // Race title below clock in circuit accent color
+        // Race title below clock in circuit accent color — strip verbose prefix, then truncate
         val titleY = clockY + clockSize * 1.1f
         centerTextPaint.textSize = 9f * uiScale; centerTextPaint.color = accentColor
-        drawTextWithShadow(canvas, raceData.title, cx, titleY, centerTextPaint)
+        val maxTitleWidth = w * 0.85f
+        var title = raceData.title
+            .replace(Regex("^\\d{4}\\s+"), "")
+            .replace("Formula 1 ", "")
+            .replace("Formula One ", "")
+        while (centerTextPaint.measureText(title) > maxTitleWidth && title.length > 10) {
+            title = title.dropLast(4) + "..."
+        }
+        drawTextWithShadow(canvas, title, cx, titleY, centerTextPaint)
 
         // Lap counter - bottom center with pill background
         if (raceData.totalLaps > 0) {

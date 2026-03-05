@@ -34,15 +34,50 @@
     </string-array>
 
     <string-array name="opacity_entries">
-        <item>Very Dark</item>
-        <item>Dark</item>
-        <item>Medium</item>
-        <item>Light</item>
+        <item>Transparent (show wallpaper)</item>
+        <item>Light overlay</item>
+        <item>Medium overlay</item>
+        <item>Dark overlay</item>
     </string-array>
     <string-array name="opacity_values">
-        <item>250</item>
+        <item>0</item>
+        <item>80</item>
+        <item>160</item>
         <item>240</item>
-        <item>220</item>
-        <item>200</item>
+    </string-array>
+
+    <string-array name="race_mode_entries">
+        <item>Historical (Replay)</item>
+        <item>Live Timing</item>
+        <item>Auto-Detect</item>
+    </string-array>
+    <string-array name="race_mode_values">
+        <item>historical</item>
+        <item>live</item>
+        <item>auto</item>
+    </string-array>
+
+    <string-array name="spoiler_delay_entries">
+        <item>1 hour</item>
+        <item>2 hours</item>
+        <item>4 hours</item>
+        <item>24 hours</item>
+    </string-array>
+    <string-array name="spoiler_delay_values">
+        <item>1</item>
+        <item>2</item>
+        <item>4</item>
+        <item>24</item>
+    </string-array>
+
+    <string-array name="car_size_entries">
+        <item>Small</item>
+        <item>Medium</item>
+        <item>Large</item>
+    </string-array>
+    <string-array name="car_size_values">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
     </string-array>
 </resources>
