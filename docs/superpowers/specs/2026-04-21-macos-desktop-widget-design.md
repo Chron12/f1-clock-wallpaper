@@ -32,9 +32,24 @@ Hourly rotation: `index = (epochMs / 3_600_000) % 50`.
 - `isFloatingPanel = false`
 - Transparent background, no titlebar (`titled` + `closable` masked out, `fullSizeContentView`)
 - `becomesKeyOnlyIfNeeded = true` — click-through unless clicking interactive element
+- **Corner radius:** 12px (`wantsLayer = true`, layer `cornerRadius = 12`, `masksToBounds = true`)
+- **Border:** 1px `rgba(255,255,255,0.05)` via layer border
 - Frame persisted to `UserDefaults` on move/resize
 - Minimum size: 300x200, default: 500x350
 - Movable and resizable by user
+
+## Design Language
+
+**Tone:** Broadcast sports graphics. Premium, information-dense, calm. Feels like the F1 TV overlay, not a debug window.
+
+**Typography:**
+- Clock: **SF Mono** bold (system monospace, geometric, renders sharply at large sizes)
+- Race title, leaderboard, lap counter: **SF Pro Display** (system sans-serif, clean at small sizes)
+- Both ship with macOS, zero licensing, zero bundling
+
+**Edge treatment:** 12px corner radius on the NSPanel, 1px border at `rgba(255,255,255,0.05)`. Prevents the "debug rectangle" look.
+
+**Scale factor:** `uiScale = min(width, height) / 500.0`, clamped to `[0.6, 2.0]`. All element sizes (font size, car radius, leaderboard width, padding) multiply by `uiScale`. Ensures proportions hold at 300px and 800px.
 
 ## Rendering
 
@@ -48,17 +63,17 @@ Single Metal render pass per frame. All geometry on CPU, uploaded to Metal buffe
 
 3. **Start/finish line** — White + F1 red `#E8002D` parallel lines at `trackOutline[0]`.
 
-4. **Cars** — Filled circles (triangle fan) with 1px black stroke. Team color from `driver.color`. Position interpolated from `locations` array via binary search + linear interpolation (same algorithm as Android). Drawn back-to-front (sorted by race position descending).
+4. **Cars** — Filled circles (triangle fan) with 1px black stroke. Team color from `driver.color`. Position interpolated from `locations` array via binary search + linear interpolation (same algorithm as Android). Drawn back-to-front (sorted by race position descending). **Driver labels** use collision avoidance: before drawing, check bounding box overlap between labels. If overlap detected, offset the lower-priority label downward or hide it.
 
 5. **Motion trails** — 4 ghost circles per car, stepping back 0.4s each (1.6s, 1.2s, 0.8s, 0.4s). Alpha: 50, 80, 110, 140. Radius: 0.45x, 0.55x, 0.65x, 0.8x main car radius.
 
 6. **Glow effects** — Leader: gold `rgba(255,215,0,0.27)` circle, P2-P3: team color at lower alpha, fastest lap holder: pulsing purple `rgba(180,77,255,0.5-0.9)` cycling via sine wave when fastest lap time has elapsed (visible for 3 seconds after FL timestamp).
 
-7. **Clock** — Top center. 12h format: `h:MM:SS AM/PM`. Monospace bold. Dark pill background `rgba(0,0,0,0.78)`. Circuit accent color underline (2.5px).
+7. **Clock** — Top center. 12h format: `h:MM:SS AM/PM`. SF Mono bold. Dark pill background `rgba(0,0,0,0.78)`. Circuit accent color underline (2.5px).
 
 8. **Race title** — Below clock. Includes year. Circuit accent color. Year extracted from race filename (e.g. `bahrain_2024.json` → `"2024"`). Format: `"2024 Australian Grand Prix"`. Truncated with ellipsis if wider than 85% of widget width.
 
-9. **Leaderboard** — Left side. Semi-transparent black background `rgba(0,0,0,0.65)`. Blinking "LIVE" header (red, 1s cycle). Per driver: position number (gray), team color dot, driver code (white). Fastest lap badge: purple "FL". Retired drivers: faded, red "DNF" pill badge.
+9. **Leaderboard** — Left side. Semi-transparent black background `rgba(0,0,0,0.65)`. Solid red dot + "LIVE" header (no blink, avoids distraction on always-on display). Per driver: position number (gray), team color dot, driver code (white). Fastest lap badge: purple "FL". Retired drivers: faded, red "DNF" pill badge. SF Pro Display for all text. **Responsive:** at widths <400px, truncate to top 5 drivers only.
 
 10. **Lap counter** — Bottom center. `"LAP  34 / 58"` format. Dark pill background.
 
@@ -67,6 +82,14 @@ Single Metal render pass per frame. All geometry on CPU, uploaded to Metal buffe
 ### Circuit accent colors
 
 Same 23-circuit map as Android, matching by title substring. Default: F1 red `#E8002D`.
+
+### Tire compound colors
+
+Same as Android: SOFT red `#FF3333`, MEDIUM yellow `#FFDD00`, HARD white `#FFFFFF`, INTERMEDIATE green `#44BB44`, WET blue `#4488FF`.
+
+### Race transitions
+
+When the hourly rotation triggers a new race, apply a 2-second crossfade: alpha-fade current race from 1.0 to 0.0 over 1s, load next race data, alpha-fade from 0.0 to 1.0 over 1s. Implemented via a global alpha modulation on the render pass. Prevents jarring hard-cuts on an ambient display.
 
 ### Frame pacing
 
