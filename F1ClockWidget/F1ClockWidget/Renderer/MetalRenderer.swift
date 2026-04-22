@@ -7,7 +7,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let engine: RaceEngine
     private var lastFrameTime: CFAbsoluteTime = 0
 
-    // Circuit accent colors (same 23-circuit map as Android)
+    // Circuit accent colors (23-circuit map matching Android)
     private let circuitAccents: [String: UInt32] = [
         "Bahrain": 0xFFE8002D, "Saudi": 0xFF00D2FF,
         "Australia": 0xFF00A550, "Japan": 0xFFFF0000,
@@ -25,12 +25,12 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
 
     // Sector colors
     private let sectorColors: [NSColor] = [
-        NSColor(red: 0.42, green: 0.18, blue: 0.62, alpha: 1), // purple
-        NSColor(red: 0.18, green: 0.35, blue: 0.62, alpha: 1), // blue
-        NSColor(red: 0.18, green: 0.62, blue: 0.35, alpha: 1), // green
+        NSColor(red: 0.42, green: 0.18, blue: 0.62, alpha: 1),
+        NSColor(red: 0.18, green: 0.35, blue: 0.62, alpha: 1),
+        NSColor(red: 0.18, green: 0.62, blue: 0.35, alpha: 1),
     ]
 
-    // Tire compound colors (static)
+    // Tire compound colors
     private static let tireColors: [String: NSColor] = [
         "SOFT": NSColor(red: 1, green: 0.2, blue: 0.2, alpha: 1),
         "MEDIUM": NSColor(red: 1, green: 0.87, blue: 0, alpha: 1),
@@ -57,7 +57,6 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private var offsetY: Float = 0
 
     // Crossfade state
-    private var crossfadeAlpha: Float = 1.0
     private var isTransitioning = false
     private var transitionStartTime: CFAbsoluteTime = 0
 
@@ -82,7 +81,6 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
 
         engine.advanceTime(delta: delta)
 
-        // Get current drawable size
         let width = Float(drawable.texture.width)
         let height = Float(drawable.texture.height)
         let uiScale = min(width, height) / 500.0
@@ -132,7 +130,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let bytesPerRow = 4 * drawable.texture.width
         drawable.texture.replace(
             region: MTLRegion(origin: .init(x: 0, y: 0, z: 0),
-                size: MTLSize(width: drawable.texture.width, height: drawable.texture.height, depth: 1)),
+                              size: MTLSize(width: drawable.texture.width, height: drawable.texture.height, depth: 1)),
             mipmapLevel: 0,
             withBytes: buffer,
             bytesPerRow: bytesPerRow
@@ -142,9 +140,28 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        // Recompute transform when resized
         if let race = engine.currentRace {
             computeTransform(width: Float(size.width), height: Float(size.height), outline: race.trackOutline)
+        }
+    }
+
+    // MARK: - Crossfade
+
+    func startCrossfade() {
+        isTransitioning = true
+        transitionStartTime = CFAbsoluteTimeGetCurrent()
+    }
+
+    func updateCrossfade() -> Float {
+        guard isTransitioning else { return 1.0 }
+        let elapsed = Float(CFAbsoluteTimeGetCurrent() - transitionStartTime)
+        if elapsed < 1.0 {
+            return 1.0 - elapsed // fade out
+        } else if elapsed < 2.0 {
+            return elapsed - 1.0 // fade in
+        } else {
+            isTransitioning = false
+            return 1.0
         }
     }
 
@@ -177,35 +194,13 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private func toScreenX(_ x: Float) -> Float { x * scaleX + offsetX }
     private func toScreenY(_ y: Float) -> Float { -y * scaleY + offsetY }
 
-    // MARK: - Crossfade
-
-    func startCrossfade() {
-        isTransitioning = true
-        transitionStartTime = CFAbsoluteTimeGetCurrent()
-    }
-
-    private func updateCrossfade() -> Float {
-        guard isTransitioning else { return 1.0 }
-        let elapsed = Float(CFAbsoluteTimeGetCurrent() - transitionStartTime)
-        if elapsed < 1.0 {
-            return 1.0 - elapsed // fade out
-        } else if elapsed < 2.0 {
-            return elapsed - 1.0 // fade in
-        } else {
-            isTransitioning = false
-            return 1.0
-        }
-    }
-
     // MARK: - Scene drawing
 
     func drawScene(_ ctx: CGContext, race: RaceData, width: Float, height: Float, uiScale: Float, fadeAlpha: Float = 1.0) {
         let t = engine.raceTimeSeconds
         let accentColor = circuitAccentColor(for: race.title)
-        let s = CGFloat(uiScale)
-
-        // Apply crossfade: modulate all alpha values
         let alpha = CGFloat(fadeAlpha)
+        let s = CGFloat(uiScale) // CGFloat alias for use in all draw methods
 
         // 1. Background
         drawBackground(ctx, width: width, height: height, opacity: CGFloat(settings.backgroundOpacity) / 255 * alpha)
@@ -246,7 +241,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                    let flPos = RaceEngine.interpolateLocation(in: locs, at: fl.t) {
                     let sx = CGFloat(toScreenX(flPos.x))
                     let sy = CGFloat(toScreenY(flPos.y))
-                    let glowR = CGFloat(10) * s
+                    let glowR = 10 * s
                     ctx.setFillColor(NSColor(red: 0.7, green: 0.3, blue: 1, alpha: CGFloat(pulseAlpha) * alpha).cgColor)
                     ctx.fillEllipse(in: CGRect(x: sx - glowR, y: sy - glowR, width: glowR * 2, height: glowR * 2))
                 }
@@ -254,28 +249,28 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         }
 
         // 7. Clock
-        drawClock(ctx, width: CGFloat(width), uiScale: s, accentColor: accentColor, fadeAlpha: alpha)
+        drawClock(ctx, width: width, uiScale: s, accentColor: accentColor, fadeAlpha: alpha)
 
         // 8. Race title
-        drawRaceTitle(ctx, race: race, width: CGFloat(width), uiScale: s, accentColor: accentColor, fadeAlpha: alpha)
+        drawRaceTitle(ctx, race: race, width: width, uiScale: s, accentColor: accentColor)
 
         // 9. Leaderboard
         if settings.showLeaderboard {
-            drawLeaderboard(ctx, driverStates: driverStates, race: race, t: t, width: CGFloat(width), height: CGFloat(height), uiScale: s, fadeAlpha: alpha)
+            drawLeaderboard(ctx, driverStates: driverStates, race: race, t: t, width: width, height: height, uiScale: s, fadeAlpha: alpha)
         }
 
         // 10. Lap counter
         if settings.showRaceInfo {
-            drawLapCounter(ctx, race: race, currentLap: currentLap, width: CGFloat(width), height: CGFloat(height), uiScale: s, fadeAlpha: alpha)
+            drawLapCounter(ctx, race: race, currentLap: currentLap, width: width, height: height, uiScale: s, fadeAlpha: alpha)
         }
 
         // 11. Progress bar
         if settings.showRaceInfo {
-            drawProgressBar(ctx, race: race, t: t, width: CGFloat(width), height: CGFloat(height), uiScale: s, accentColor: accentColor, fadeAlpha: alpha)
+            drawProgressBar(ctx, race: race, t: t, width: width, height: height, uiScale: s, accentColor: accentColor)
         }
     }
 
-    // MARK: - 1. Background
+    // MARK: - Background
 
     private func drawBackground(_ ctx: CGContext, width: Float, height: Float, opacity: CGFloat) {
         let topH = CGFloat(height * 0.3)
@@ -285,7 +280,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         ctx.fill(CGRect(x: 0, y: topH, width: CGFloat(width), height: CGFloat(height) - topH))
     }
 
-    // MARK: - 2. Track
+    // MARK: - Track
 
     private func drawTrack(_ ctx: CGContext, race: RaceData, uiScale: CGFloat, accentColor: NSColor) {
         func strokePath(_ points: [TrackPoint], color: NSColor) {
@@ -296,8 +291,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             ctx.strokePath()
         }
 
-        let sectors = race.trackSectors
-        if settings.showSectorColors, let sectors,
+        if settings.showSectorColors, let sectors = race.trackSectors,
            sectors.sector1.count > 1, sectors.sector2.count > 1, sectors.sector3.count > 1 {
             for i in 0..<3 {
                 let pts = [sectors.sector1, sectors.sector2, sectors.sector3][i]
@@ -306,15 +300,14 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         } else {
             let outline = race.trackOutline
             guard outline.count > 1 else { return }
-            // Use accent-derived track color
-            let r = (accentColor.redComponent * 0.2) + 0.2
-            let g = (accentColor.greenComponent * 0.2) + 0.2
-            let b = (accentColor.blueComponent * 0.2) + 0.2
+            let r = CGFloat((accentColor.redComponent * 0.2) + 0.2)
+            let g = CGFloat((accentColor.greenComponent * 0.2) + 0.2)
+            let b = CGFloat((accentColor.blueComponent * 0.2) + 0.2)
             strokePath(outline, color: NSColor(red: r, green: g, blue: b, alpha: 0.8))
         }
     }
 
-    // MARK: - 3. Start/finish
+    // MARK: - Start/finish
 
     private func drawStartFinishLine(_ ctx: CGContext, outline: [TrackPoint], uiScale: CGFloat) {
         guard outline.count > 1 else { return }
@@ -322,7 +315,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let sy = CGFloat(toScreenY(outline[0].y))
         let dx = CGFloat(toScreenX(outline[1].x)) - sx
         let dy = CGFloat(toScreenY(outline[1].y)) - sy
-        let len = max(sqrt(dx*dx + dy*dy), 0.001)
+        let len = max(sqrt(dx * dx + dy * dy), 0.001)
         let px = -dy / len * 14 * uiScale
         let py = dx / len * 14 * uiScale
 
@@ -341,7 +334,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         ctx.strokePath()
     }
 
-    // MARK: - 4-6. Car (trails + glow + body + label)
+    // MARK: - Car (trails + glow + body + label)
 
     private func drawCar(_ ctx: CGContext, ds: DriverState, t: Float, uiScale: CGFloat, fadeAlpha: CGFloat = 1.0) {
         let sx = CGFloat(toScreenX(ds.position.x))
@@ -349,14 +342,14 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let r = 6 * uiScale * CGFloat(settings.carSizeMultiplier)
         let carColor = driverColor(ds.driver)
 
-        // Trails (4 ghost circles, offsets 0.4s-1.6s, alpha 0.2-0.55)
+        // Trails
         let offsets: [Float] = [1.6, 1.2, 0.8, 0.4]
         let alphas: [CGFloat] = [0.2, 0.31, 0.43, 0.55]
         let radMul: [CGFloat] = [0.45, 0.55, 0.65, 0.8]
         for i in 0..<4 {
             guard t - offsets[i] > 0 else { continue }
             if let tp = RaceEngine.interpolateLocation(in: ds.locations, at: t - offsets[i]) {
-                ctx.setFillColor(carColor.withAlphaComponent(alphas[i] * fadeAlpha).cgColor)
+                ctx.setFillColor(carColor.withAlphaComponent(alphas[i]).cgColor)
                 ctx.fillEllipse(in: CGRect(
                     x: CGFloat(toScreenX(tp.x)) - r * radMul[i],
                     y: CGFloat(toScreenY(tp.y)) - r * radMul[i],
@@ -365,27 +358,25 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             }
         }
 
-        // Glow effects
+        // Glow
         if settings.showGlowEffects {
             if ds.racePosition == 1 {
-                // Gold glow on P1
-                ctx.setFillColor(NSColor(red: 1, green: 0.84, blue: 0, alpha: 0.27 * fadeAlpha).cgColor)
+                ctx.setFillColor(NSColor(red: 1, green: 0.84, blue: 0, alpha: 0.27).cgColor)
                 ctx.fillEllipse(in: CGRect(x: sx - r - 6, y: sy - r - 6, width: (r + 6) * 2, height: (r + 6) * 2))
             } else if ds.racePosition <= 3 {
-                // Team-color glow on P2-P3
-                ctx.setFillColor(carColor.withAlphaComponent(0.2 * fadeAlpha).cgColor)
+                ctx.setFillColor(carColor.withAlphaComponent(0.2).cgColor)
                 ctx.fillEllipse(in: CGRect(x: sx - r - 4, y: sy - r - 4, width: (r + 4) * 2, height: (r + 4) * 2))
             }
         }
 
-        // Car body: team-color filled circle with 1px black stroke
+        // Body
         ctx.setFillColor(carColor.cgColor)
         ctx.fillEllipse(in: CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2))
         ctx.setStrokeColor(NSColor.black.cgColor)
         ctx.setLineWidth(1.2 * uiScale)
         ctx.strokeEllipse(in: CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2))
 
-        // Driver label (top 3 always, others when enabled)
+        // Label (top 3 always, others when enabled)
         if ds.racePosition <= 3 || settings.showDriverLabels {
             let fontSize = 8 * uiScale
             let text = ds.driver.code as NSString
@@ -397,7 +388,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             let lx = sx + r + 3 * uiScale
             let ly = sy - fontSize / 2
 
-            // Pill background for collision avoidance
+            // Pill background
             let pillRect = CGRect(x: lx - 2, y: ly - 2, width: textWidth + 4, height: fontSize + 4)
             ctx.setFillColor(NSColor(white: 0, alpha: 0.7).cgColor)
             let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
@@ -408,42 +399,41 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    // MARK: - 7. Clock
+    // MARK: - Clock
 
-    private func drawClock(_ ctx: CGContext, width: CGFloat, uiScale: CGFloat, accentColor: NSColor, fadeAlpha: CGFloat = 1.0) {
-        let cx = width / 2
+    private func drawClock(_ ctx: CGContext, width: Float, uiScale: CGFloat, accentColor: NSColor, fadeAlpha: CGFloat = 1.0) {
+        let cx = CGFloat(width / 2)
         let now = Date()
         let clockText = dateFormatter.string(from: now)
 
         let fontSize = 18 * uiScale
         let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white.withAlphaComponent(fadeAlpha)]
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
         let textWidth = (clockText as NSString).size(withAttributes: attrs).width
         let pp = 10 * uiScale
         let clockY = 28 * uiScale
 
-        // Dark pill background
+        // Pill
         let pillRect = CGRect(x: cx - textWidth / 2 - pp, y: clockY - fontSize - 2 * uiScale, width: textWidth + pp * 2, height: fontSize + 8 * uiScale)
-        ctx.setFillColor(NSColor(white: 0, alpha: 0.78 * fadeAlpha).cgColor)
+        ctx.setFillColor(NSColor(white: 0, alpha: 0.78).cgColor)
         let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 10 * uiScale, cornerHeight: 10 * uiScale, transform: nil)
         ctx.addPath(pillPath)
         ctx.fillPath()
 
         // Accent underline
-        ctx.setFillColor(accentColor.withAlphaComponent(fadeAlpha).cgColor)
+        ctx.setFillColor(accentColor.cgColor)
         ctx.fill(CGRect(x: pillRect.minX + 8 * uiScale, y: pillRect.maxY - 2.5 * uiScale, width: pillRect.width - 16 * uiScale, height: 2.5 * uiScale))
 
         // Text
         (clockText as NSString).draw(at: CGPoint(x: cx - textWidth / 2, y: clockY - fontSize), withAttributes: attrs)
     }
 
-    // MARK: - 8. Race title
+    // MARK: - Race title
 
-    private func drawRaceTitle(_ ctx: CGContext, race: RaceData, width: CGFloat, uiScale: CGFloat, accentColor: NSColor, fadeAlpha: CGFloat = 1.0) {
-        let cx = width / 2
+    private func drawRaceTitle(_ ctx: CGContext, race: RaceData, width: Float, uiScale: CGFloat, accentColor: NSColor) {
+        let cx = CGFloat(width / 2)
         let titleY = 58 * uiScale + 18 * uiScale * 1.1
 
-        // Extract year from title (e.g., "2024 Bahrain Grand Prix" already has it)
         var title = race.title
             .replacingOccurrences(of: "Formula 1 ", with: "")
             .replacingOccurrences(of: "Formula One ", with: "")
@@ -451,10 +441,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let fontSize = 9 * uiScale
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
-            .foregroundColor: accentColor.withAlphaComponent(fadeAlpha)
+            .foregroundColor: accentColor
         ]
-        let maxWidth = width * 0.85
-        // Truncate to 85% widget width
+        let maxWidth = CGFloat(width) * 0.85
         while (title as NSString).size(withAttributes: attrs).width > maxWidth && title.count > 10 {
             title = String(title.dropLast(4)) + "..."
         }
@@ -462,10 +451,9 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         (title as NSString).draw(at: CGPoint(x: cx - textWidth / 2, y: titleY), withAttributes: attrs)
     }
 
-    // MARK: - 9. Leaderboard
+    // MARK: - Leaderboard
 
-    private func drawLeaderboard(_ ctx: CGContext, driverStates: [DriverState], race: RaceData, t: Float, width: CGFloat, height: CGFloat, uiScale: CGFloat, fadeAlpha: CGFloat = 1.0) {
-        // Responsive: top-5 at <400px
+    private func drawLeaderboard(_ ctx: CGContext, driverStates: [DriverState], race: RaceData, t: Float, width: Float, height: Float, uiScale: CGFloat, fadeAlpha: CGFloat = 1.0) {
         let maxDrivers = width < 400 ? 5 : 20
         let active = driverStates.filter { !$0.retired }.sorted { $0.racePosition < $1.racePosition }
         let retired = driverStates.filter { $0.retired }.sorted { $0.racePosition < $1.racePosition }
@@ -474,45 +462,45 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let fs = 9 * uiScale
         let lh = 13.5 * uiScale
         let lbX = 6 * uiScale
-        let lbY = height * 0.20
+        let lbY = CGFloat(height * 0.20)
         let lbW = 84 * uiScale
 
         // Background
         let totalRows = shown.count + retired.count + 1
         let bgRect = CGRect(x: lbX, y: lbY, width: lbW, height: lh * CGFloat(totalRows) + 6 * uiScale)
-        ctx.setFillColor(NSColor(white: 0, alpha: 0.65 * fadeAlpha).cgColor)
+        ctx.setFillColor(NSColor(white: 0, alpha: 0.65).cgColor)
         let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 6 * uiScale, cornerHeight: 6 * uiScale, transform: nil)
         ctx.addPath(bgPath)
         ctx.fillPath()
 
-        // LIVE header (solid red dot, no blink)
+        // LIVE header (solid red dot)
         let liveAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: fs * 0.85, weight: .bold),
-            .foregroundColor: NSColor(red: 1, green: 0.2, blue: 0.2, alpha: fadeAlpha)
+            .foregroundColor: NSColor(red: 1, green: 0.2, blue: 0.2, alpha: 1)
         ]
         let liveY = lbY + lh * 0.8
         let dotSize = CGFloat(5)
-        ctx.setFillColor(NSColor(red: 1, green: 0.2, blue: 0.2, alpha: fadeAlpha).cgColor)
+        ctx.setFillColor(NSColor(red: 1, green: 0.2, blue: 0.2, alpha: 1).cgColor)
         ctx.fillEllipse(in: CGRect(x: lbX + lbW / 2 - 14, y: liveY - dotSize / 2, width: dotSize, height: dotSize))
         ("LIVE" as NSString).draw(at: CGPoint(x: lbX + lbW / 2 - 6, y: liveY - fs * 0.4), withAttributes: liveAttrs)
 
         // Driver rows
         var y = lbY + lh * 2
         let dotR = 3 * uiScale
-        let posAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs, weight: .regular), .foregroundColor: NSColor(white: 0.6, alpha: fadeAlpha)]
 
         for ds in shown {
-            // Position number
-            ("\(ds.racePosition)" as NSString).draw(at: CGPoint(x: lbX, y: y - fs), withAttributes: posAttrs)
-            // Team color dot
+            ("\(ds.racePosition)" as NSString).draw(
+                at: CGPoint(x: lbX, y: y - fs),
+                withAttributes: [.font: NSFont.systemFont(ofSize: fs, weight: .regular), .foregroundColor: NSColor(white: 0.6, alpha: 1)]
+            )
             ctx.setFillColor(driverColor(ds.driver).cgColor)
             ctx.fillEllipse(in: CGRect(x: lbX + 18 * uiScale, y: y - fs / 2 - dotR / 2, width: dotR, height: dotR))
-            // Driver code
-            let codeAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs, weight: .medium), .foregroundColor: NSColor.white.withAlphaComponent(fadeAlpha)]
-            (ds.driver.code as NSString).draw(at: CGPoint(x: lbX + 24 * uiScale, y: y - fs), withAttributes: codeAttrs)
-            // Tire compound dot
+            (ds.driver.code as NSString).draw(
+                at: CGPoint(x: lbX + 24 * uiScale, y: y - fs),
+                withAttributes: [.font: NSFont.systemFont(ofSize: fs, weight: .medium), .foregroundColor: NSColor.white]
+            )
             if let tire = ds.tire, let tireColor = Self.tireColors[tire] {
-                let tireR = 2 * uiScale
+                let tireR = CGFloat(2 * uiScale)
                 ctx.setFillColor(tireColor.cgColor)
                 ctx.fillEllipse(in: CGRect(x: lbX + 52 * uiScale, y: y - fs / 2 - tireR / 2, width: tireR, height: tireR))
             }
@@ -520,18 +508,17 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         }
 
         for ds in retired {
-            let fadedAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs * 0.85, weight: .regular), .foregroundColor: NSColor(white: 0.27, alpha: fadeAlpha)]
+            let fadedAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs * 0.85, weight: .regular), .foregroundColor: NSColor(white: 0.27, alpha: 1)]
             ("-" as NSString).draw(at: CGPoint(x: lbX, y: y - fs), withAttributes: fadedAttrs)
             let fadedColor = driverColor(ds.driver).withAlphaComponent(0.3)
             ctx.setFillColor(fadedColor.cgColor)
             ctx.fillEllipse(in: CGRect(x: lbX + 18 * uiScale, y: y - fs / 2 - dotR * 0.4, width: dotR * 0.8, height: dotR * 0.8))
             (ds.driver.code as NSString).draw(at: CGPoint(x: lbX + 24 * uiScale, y: y - fs), withAttributes: fadedAttrs)
 
-            // DNF badge
             let dnfAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fs * 0.6, weight: .bold), .foregroundColor: NSColor.white]
             let dnfX = lbX + 52 * uiScale
             let dnfW = ("DNF" as NSString).size(withAttributes: dnfAttrs).width
-            ctx.setFillColor(NSColor(red: 0.7, green: 0, blue: 0, alpha: 0.8 * fadeAlpha).cgColor)
+            ctx.setFillColor(NSColor(red: 0.7, green: 0, blue: 0, alpha: 0.8).cgColor)
             let dnfRect = CGRect(x: dnfX - 2, y: y - fs, width: dnfW + 4, height: fs)
             let dnfPath = CGPath(roundedRect: dnfRect, cornerWidth: 3, cornerHeight: 3, transform: nil)
             ctx.addPath(dnfPath)
@@ -541,20 +528,19 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    // MARK: - 10. Lap counter
+    // MARK: - Lap counter
 
-    private func drawLapCounter(_ ctx: CGContext, race: RaceData, currentLap: Int, width: CGFloat, height: CGFloat, uiScale: CGFloat, fadeAlpha: CGFloat = 1.0) {
+    private func drawLapCounter(_ ctx: CGContext, race: RaceData, currentLap: Int, width: Float, height: Float, uiScale: CGFloat, fadeAlpha: CGFloat = 1.0) {
         guard race.totalLaps > 0 else { return }
-        let cx = width / 2
+        let cx = CGFloat(width / 2)
         let lapText = "LAP  \(currentLap) / \(race.totalLaps)"
         let fontSize = 10 * uiScale
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: .bold), .foregroundColor: NSColor.white.withAlphaComponent(fadeAlpha)]
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: .bold), .foregroundColor: NSColor.white]
         let textWidth = (lapText as NSString).size(withAttributes: attrs).width
-        let lapY = height - 14 * uiScale
+        let lapY = CGFloat(height) - 14 * uiScale
 
-        // Dark pill background
         let pillRect = CGRect(x: cx - textWidth / 2 - 8 * uiScale, y: lapY - 12 * uiScale, width: textWidth + 16 * uiScale, height: 16 * uiScale)
-        ctx.setFillColor(NSColor(white: 0, alpha: 0.67 * fadeAlpha).cgColor)
+        ctx.setFillColor(NSColor(white: 0, alpha: 0.67).cgColor)
         let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 6 * uiScale, cornerHeight: 6 * uiScale, transform: nil)
         ctx.addPath(pillPath)
         ctx.fillPath()
@@ -562,18 +548,16 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         (lapText as NSString).draw(at: CGPoint(x: cx - textWidth / 2, y: lapY - fontSize), withAttributes: attrs)
     }
 
-    // MARK: - 11. Progress bar
+    // MARK: - Progress bar
 
-    private func drawProgressBar(_ ctx: CGContext, race: RaceData, t: Float, width: CGFloat, height: CGFloat, uiScale: CGFloat, accentColor: NSColor, fadeAlpha: CGFloat = 1.0) {
-        let pct = min(max(CGFloat(t) / CGFloat(race.raceDurationS), 0), 1)
-        let barY = height - 3 * uiScale
+    private func drawProgressBar(_ ctx: CGContext, race: RaceData, t: Float, width: Float, height: Float, uiScale: CGFloat, accentColor: NSColor) {
+        let pct = CGFloat(min(max(t / race.raceDurationS, 0), 1))
+        let barY = CGFloat(height) - 3 * uiScale
 
-        // Background
         ctx.setFillColor(NSColor(white: 0.1, alpha: 1).cgColor)
-        ctx.fill(CGRect(x: 0, y: barY, width: width, height: 3 * uiScale))
-        // Accent fill
-        ctx.setFillColor(accentColor.withAlphaComponent(fadeAlpha).cgColor)
-        ctx.fill(CGRect(x: 0, y: barY, width: width * pct, height: 3 * uiScale))
+        ctx.fill(CGRect(x: 0, y: barY, width: CGFloat(width), height: 3 * uiScale))
+        ctx.setFillColor(accentColor.cgColor)
+        ctx.fill(CGRect(x: 0, y: barY, width: CGFloat(width) * pct, height: 3 * uiScale))
     }
 
     // MARK: - Helpers
@@ -587,7 +571,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
                 return NSColor(red: r, green: g, blue: b, alpha: 1)
             }
         }
-        return NSColor(red: 0.91, green: 0, blue: 0.18, alpha: 1) // F1 red default
+        return NSColor(red: 0.91, green: 0, blue: 0.18, alpha: 1)
     }
 
     private func driverColor(_ driver: Driver) -> NSColor {

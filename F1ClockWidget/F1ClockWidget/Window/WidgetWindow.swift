@@ -3,10 +3,6 @@ import AppKit
 final class WidgetWindow: NSPanel {
     private let settings: WidgetSettings
 
-    convenience init() {
-        self.init(settings: WidgetSettings())
-    }
-
     init(settings: WidgetSettings) {
         self.settings = settings
         let frame = settings.windowFrame
@@ -17,7 +13,7 @@ final class WidgetWindow: NSPanel {
             defer: false
         )
 
-        // Desktop level — always behind normal windows
+        // Desktop level -- always behind normal windows
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
         isFloatingPanel = false
         becomesKeyOnlyIfNeeded = true
